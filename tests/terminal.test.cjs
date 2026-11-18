@@ -7,7 +7,8 @@ function terminal() {
   let term;
   const sent = [], notices = [], output = [], pasted = [], refreshed = [], sizes = [];
   class Terminal {
-    constructor() { term = this; this.modes = { bracketedPasteMode: false }; this.cols = 80; this.rows = 24; this.textarea = { focus: options => { this.focused = true; this.focusOptions = options; } }; }
+    constructor(options) { term = this; this.options = options; this.modes = { bracketedPasteMode: false }; this.cols = 80; this.rows = 24; this.textarea = { focus: options => { this.focused = true; this.focusOptions = options; } }; }
+    getSelection() { return this.selection || ''; }
     loadAddon() {} open() {} focus() { this.focused = true; } dispose() {}
     onData(callback) { this.data = callback; }
     onBinary(callback) { this.binary = callback; }
@@ -24,7 +25,7 @@ function terminal() {
     btoa: value => Buffer.from(value, 'binary').toString('base64'),
     atob: value => Buffer.from(value, 'base64').toString('binary'),
     ResizeObserver: class { observe() {} disconnect() {} },
-    document: { getElementById: () => ({}) }, window: {},
+    document: { getElementById: () => ({}), documentElement: { dataset: {} } }, window: {},
     terminalBridge: { input: data => sent.push(Buffer.from(data, 'base64')), notice: text => notices.push(text), resize: (cols, rows) => sizes.push([cols, rows]), ready() {} }
   };
   vm.runInNewContext(fs.readFileSync('web/terminal/terminal.js', 'utf8'), context);
@@ -97,5 +98,23 @@ test('revealing the same-size viewport redraws buffered output without replaying
   assert.deepEqual(t.refreshed, [[0, 23], [0, 23]]);
   assert.deepEqual(t.sizes, [[80, 24], [80, 24]]);
   assert.equal(t.output[0].toString(), 'restored prompt $ ');
+  assert.equal(t.sent.length, 0);
+});
+
+test('theme changes retain output and copying joins wrapped lines without sending terminal input', () => {
+  const t = terminal(); t.bridge.connection(true);
+  t.bridge.output(encode('中文输出'));
+  t.bridge.theme('light'); assert.equal(t.term.options.theme.background, '#ffffff');
+  t.bridge.theme('dark'); assert.equal(t.term.options.theme.background, '#101820');
+  assert.equal(t.output[0].toString(), '中文输出');
+  t.term.selection = '输出'; assert.equal(t.bridge.selection(), '输出');
+  const lines = [
+    { isWrapped: false, translateToString: trim => { assert.equal(trim, false); return 'long '; } },
+    { isWrapped: true, translateToString: () => 'command中文' },
+    { isWrapped: false, translateToString: () => 'result' },
+    { isWrapped: false, translateToString: () => '' }
+  ];
+  t.term.buffer = { active: { length: lines.length, getLine: i => lines[i] } };
+  assert.equal(t.bridge.text(), 'long command中文\nresult');
   assert.equal(t.sent.length, 0);
 });

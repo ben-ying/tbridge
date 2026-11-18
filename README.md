@@ -124,6 +124,14 @@ Use **Refresh** to reload sessions, **Rename** to change a session name and **En
 
 **Computers → Add** saves links to other servers and opens each in its own tab. Each HTTPS origin/browser profile pairs separately; this is not a cross-server proxy. Web shortcuts and computer links stay in the current browser. Authentication uses a Secure, HttpOnly, SameSite=Strict cookie; tokens are not stored in JavaScript storage or URL parameters.
 
+### Day/night mode, devices and copying
+
+Use **Light mode / Dark mode** in the header to switch the page and terminal together. The initial mode follows the system appearance; your choice is saved in this browser. Changing the mode preserves terminal output and the current connection.
+
+The authenticated **Devices** panel lists paired browser names, device IDs, Online/Offline, the current browser and last activity observed since this server started. It refreshes every ten seconds. Online means authenticated activity within the last 30 seconds; a disconnected or suspended browser may remain Online briefly. Tabs sharing a browser credential count as one device. These are paired clients, not all computers on your LAN or tailnet. Authentication credentials and hashes are never included in the list.
+
+For copying, select text in the terminal on a computer and click **Copy text**. Hold Shift while selecting if the foreground application captures mouse input. Without a selection, **Copy text** opens the terminal screen and available scrollback as selectable plain text; this is also useful on phones. Use **Copy to clipboard**, or select a portion and use the browser's Copy action. If clipboard permission is unavailable, manual selection remains available. Copying sends no terminal input; Ctrl+C remains the terminal interrupt key. Export includes up to the renderer's 1,000 history lines and the current screen, rather than unlimited command logs.
+
 ## Commands, shortcuts and AI agents
 
 Input goes to the selected session's **current foreground program**, whether a shell, agent or confirmation prompt. Verify the computer and session name before sending input.

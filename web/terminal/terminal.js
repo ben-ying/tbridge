@@ -34,6 +34,25 @@
   const observer = new ResizeObserver(() => { fit.fit(); });
   observer.observe(document.getElementById('terminal'));
   window.tbridge = {
+    theme: mode => {
+      const light = mode === 'light';
+      document.documentElement.dataset.theme = light ? 'light' : 'dark';
+      // Change the existing renderer instead of recreating it and losing output or selection.
+      term.options.theme = light
+        ? { background: '#ffffff', foreground: '#172330', cursor: '#0f766e', selectionBackground: '#99f6e4', selectionForeground: '#172330', black: '#172330', red: '#b91c1c', green: '#166534', yellow: '#854d0e', blue: '#1d4ed8', magenta: '#7e22ce', cyan: '#0e7490', white: '#64748b', brightBlack: '#475569', brightRed: '#dc2626', brightGreen: '#15803d', brightYellow: '#a16207', brightBlue: '#2563eb', brightMagenta: '#9333ea', brightCyan: '#0891b2', brightWhite: '#334155' }
+        : { background: '#101820', foreground: '#e2e8f0', cursor: '#e2e8f0', selectionBackground: '#36536a' };
+    },
+    selection: () => term.getSelection(),
+    text: () => {
+      const buffer = term.buffer.active;
+      let text = '';
+      for (let i = 0; i < buffer.length; i++) {
+        const wrapped = buffer.getLine(i + 1)?.isWrapped;
+        // Join soft-wrapped display rows so copied commands retain their original logical lines.
+        text += (buffer.getLine(i)?.translateToString(!wrapped) || '') + (wrapped ? '' : '\n');
+      }
+      return text.replace(/\n+$/, '');
+    },
     output: data => term.write(decode(data)),
     // Initial keyboard focus must not scroll the parent page down to the terminal cursor.
     focus: () => term.textarea?.focus({ preventScroll: true }),

@@ -9,12 +9,14 @@
   let failureShown = false;
   let heartbeatTimer = null, heartbeat = null;
   const heartbeatInterval = 5000, heartbeatTimeout = 15000;
-  let preferences = { computers: [], shortcuts: [] };
+  let devicesTimer = null, devicesBusy = false;
+  let preferences = { computers: [], shortcuts: [], theme: window.matchMedia?.('(prefers-color-scheme: light)')?.matches ? 'light' : 'dark' };
   let storageWarning = '';
   try {
     const saved = JSON.parse(localStorage.getItem('tbridge-preferences') || '{}');
     if (Array.isArray(saved.computers)) preferences.computers = saved.computers.filter(c => typeof c.name === 'string' && typeof c.address === 'string');
     if (Array.isArray(saved.shortcuts)) preferences.shortcuts = saved.shortcuts.filter(s => typeof s.id === 'string' && typeof s.name === 'string' && typeof s.text === 'string');
+    if (saved.theme === 'light' || saved.theme === 'dark') preferences.theme = saved.theme;
   } catch (error) { storageWarning = 'Browser preferences could not be loaded; changes may not persist.'; }
   const notify = text => { $('status').textContent = String(text); };
   function savePreferences() {
@@ -42,9 +44,20 @@
   function terminal() {
     try { return frame.contentWindow?.tbridge; } catch (error) { return null; }
   }
+  function applyTheme() {
+    document.documentElement.dataset.theme = preferences.theme;
+    $('theme-toggle').textContent = preferences.theme === 'dark' ? 'Light mode' : 'Dark mode';
+    terminal()?.theme(preferences.theme);
+  }
+  $('theme-toggle').addEventListener('click', () => {
+    preferences.theme = preferences.theme === 'dark' ? 'light' : 'dark';
+    applyTheme(); savePreferences();
+  });
   function state() {
     $('pair-panel').hidden = authenticated;
     $('session-panel').hidden = !authenticated;
+    $('devices-panel').hidden = !authenticated;
+    if (!authenticated) { clearInterval(devicesTimer); devicesTimer = null; }
     $('logout').hidden = !authenticated;
     $('empty-panel').hidden = !authenticated || selected !== null;
     $('terminal-panel').hidden = !authenticated || selected === null;
@@ -138,7 +151,28 @@
   async function loadSessions() {
     sessions = await api('GET', 'sessions'); authenticated = true;
     renderSessions(); state();
+    void loadDevices();
+    // Poll even when no terminal is open so a paired page can announce its presence.
+    if (devicesTimer === null) devicesTimer = setInterval(() => { if (authenticated) void loadDevices(); }, 10000);
   }
+  async function loadDevices() {
+    if (!authenticated || devicesBusy) return;
+    devicesBusy = true;
+    try {
+      const devices = await api('GET', 'devices');
+      if (!authenticated) return;
+      $('devices').replaceChildren(...devices.map(device => {
+        const li = element('li');
+        li.append(element('span', device.name + (device.current ? ' (this browser)' : '')),
+          element('small', device.online ? '● Online' : '○ Offline'), element('small', device.id));
+        if (device.lastSeen) li.append(element('small', 'Last seen: ' + new Date(device.lastSeen).toLocaleString()));
+        return li;
+      }));
+      $('devices-status').textContent = `${devices.filter(device => device.online).length} online / ${devices.length} paired`;
+    } catch (error) { $('devices-status').textContent = 'Devices unavailable; displayed statuses may be stale. Use Refresh to retry.'; }
+    finally { devicesBusy = false; }
+  }
+  $('refresh-devices').addEventListener('click', () => { void loadDevices(); });
   $('refresh').addEventListener('click', () => { void run(loadSessions); });
   $('create-session').addEventListener('click', () => edit('New session', '', '', null, async name => {
     const session = await api('POST', 'sessions', { name });
@@ -216,6 +250,7 @@
     notice(text, epoch) { if (String(generation) === epoch) notify(text); },
     ready(epoch) {
       if (String(generation) !== epoch || !selected || !authenticated || socket !== null) return;
+      applyTheme();
       const current = generation;
       const url = new URL(`/api/v1/sessions/${encodeURIComponent(selected.id)}/terminal`, location.origin); url.protocol = 'wss:';
       socket = new WebSocket(url);
@@ -257,6 +292,24 @@
     }
   };
   $('reconnect').addEventListener('click', () => { if (selected) openSession(selected); });
+  $('copy-text').addEventListener('click', () => {
+    const selection = terminal()?.selection() || '';
+    const text = selection || terminal()?.text() || '';
+    if (!text) { notify('No terminal text available to copy.'); return; }
+    // Export to a native textarea so mobile users can select text even without xterm touch selection.
+    $('copy-value').value = text;
+    $('copy-message').textContent = selection ? 'Selected terminal text. You can also select part of the text below.' : 'Terminal screen and available scrollback. Select any part to copy.';
+    $('copy-dialog').showModal();
+    $('copy-value').focus({ preventScroll: true }); $('copy-value').select();
+  });
+  $('copy-clipboard').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText($('copy-value').value);
+      $('copy-message').textContent = 'Copied to clipboard.';
+    } catch (error) { $('copy-message').textContent = 'Clipboard access unavailable. Select the text and use your browser’s Copy action.'; }
+  });
+  $('copy-close').addEventListener('click', () => $('copy-dialog').close());
+  $('copy-dialog').addEventListener('close', () => { $('copy-value').value = ''; });
   // Clear is a foreground-program key, never an injected shell command; the draft has its own Clear input action.
   const keys = { Escape: '\x1b', Tab: '\t', Backspace: '\x7f', Delete: '\x1b[3~', Home: '\x1b[H', End: '\x1b[F', PageUp: '\x1b[5~', PageDown: '\x1b[6~', ArrowUp: '\x1b[A', ArrowDown: '\x1b[B', ArrowLeft: '\x1b[D', ArrowRight: '\x1b[C', Clear: '\x0c', Interrupt: '\x03', EOF: '\x04' };
   for (const node of document.querySelectorAll('[data-key]')) node.addEventListener('click', () => terminal()?.key(encode(keys[node.dataset.key])));
@@ -284,10 +337,15 @@
     if (encoder.encode(text).length > 65536) throw Error('Shortcut limit: 64 KiB.');
     preferences.shortcuts.push({ id: crypto.randomUUID(), name, text }); savePreferences(); renderShortcuts();
   }));
-  window.addEventListener('pagehide', stopTerminal);
+  window.addEventListener('pagehide', () => { stopTerminal(); clearInterval(devicesTimer); devicesTimer = null; });
+  window.addEventListener('pageshow', () => {
+    if (authenticated && devicesTimer === null) {
+      void loadDevices(); devicesTimer = setInterval(() => { if (authenticated) void loadDevices(); }, 10000);
+    }
+  });
   window.addEventListener('offline', () => { if (socket && !failureShown) lost('Client network offline. Reconnect after the network returns.'); });
   $('host-address').textContent = location.origin;
-  renderComputers(); renderShortcuts(); state();
+  applyTheme(); renderComputers(); renderShortcuts(); state();
   void run(async () => {
     try { await loadSessions(); notify(storageWarning || 'Choose or create a terminal session.'); }
     catch (error) { notify(error.message.startsWith('device authentication') ? 'Pair this browser to get started.' : error.message); }

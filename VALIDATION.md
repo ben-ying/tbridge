@@ -43,6 +43,14 @@ Executed checks: 7 terminal tests and 9 browser tests passed. New coverage inclu
 
 The requested pre-fix Git commit could not be created: `.git` is read-only and `git add` cannot create `index.lock`. The prior UI diff was saved to `/tmp/tbridge-ui-before-connectivity-fix.patch`; no commit was created.
 
+### Themes, device presence and terminal copying (2026-11-18)
+
+The header theme toggle changes the page and existing xterm renderer together, follows system appearance initially and stores a manual choice in browser preferences. Terminal text and the connection are preserved. The authenticated Devices panel polls every ten seconds and shows only public paired-device metadata. Online means authenticated activity in the last 30 seconds; timestamps are held in server memory and reset on restart. Existing pairing records require no migration. WebSocket application heartbeats also update presence. Multiple tabs sharing a credential count as one device; timer throttling can make a background browser appear offline.
+
+Copy text exports the xterm selection, or the active terminal buffer when no selection exists, into a readonly native textarea. Soft-wrapped rows are joined into logical lines. Clipboard writes require a user click; if access is denied or unavailable, the text remains selectable for manual copying. Copied text is not persisted in browser preferences, and the dialog clears it on close. Ctrl+C keeps its terminal interrupt behavior.
+
+Validation: 12 browser tests and 8 renderer tests passed. Coverage includes saved/system theme choice, forwarding theme to a new terminal without reconnecting, online/offline/current device labels and stale-list errors, selection/scrollback copying, denied clipboard access, wrapped Chinese text and copying without terminal input. Go race tests and Go vet passed. New server tests verify authentication, origin rejection, presence expiry, revocation, concurrent updates and absence of credentials/hashes in device responses. The build script passed server tests and generated all four server binaries. Real desktop/mobile colors, selection gestures, OS clipboard permissions and cross-device presence updates still need host/browser acceptance; automated browser tests use a simulated DOM and transport.
+
 ### Host checks
 
 1. Run the Go suite on a real Linux/macOS host and confirm tmux integration passes without a skip. macOS binaries were cross-compiled, not run here.

@@ -17,9 +17,11 @@ import (
 )
 
 type service struct {
-	store *stateStore
-	tmux  *tmuxManager
-	ctx   context.Context
+	store      *stateStore
+	tmux       *tmuxManager
+	ctx        context.Context
+	presenceMu sync.Mutex
+	lastSeen   map[string]time.Time
 }
 
 func constantEqual(a, b string) bool { return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1 }
@@ -55,10 +57,12 @@ func (s *service) routes() http.Handler {
 				failure(w, 401, "device authentication failed")
 				return
 			}
+			s.noteDevice(token)
 			next(w, r)
 		}
 	}
 	m.HandleFunc("GET /api/v1/sessions", auth(s.sessions))
+	m.HandleFunc("GET /api/v1/devices", auth(s.devices))
 	m.HandleFunc("POST /api/v1/sessions", auth(s.create))
 	m.HandleFunc("PATCH /api/v1/sessions/{id}", auth(s.rename))
 	m.HandleFunc("DELETE /api/v1/sessions/{id}", auth(s.remove))
@@ -279,6 +283,7 @@ func (s *service) terminal(w http.ResponseWriter, r *http.Request) {
 				_ = ws.send(terminalMessage{Type: "error", Message: "heartbeat ID required"})
 				return
 			}
+			s.noteDevice(token)
 			if ws.send(terminalMessage{Type: "pong", ID: msg.ID}) != nil {
 				return
 			}

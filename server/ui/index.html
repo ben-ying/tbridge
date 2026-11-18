@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="color-scheme" content="dark">
+  <meta name="color-scheme" content="dark light">
   <title>TBridge — remote terminal</title>
   <link rel="icon" type="image/svg+xml" href="icon.svg">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -13,7 +13,7 @@
 <body>
   <header>
     <div class="brand"><img src="icon.svg" width="32" height="32" alt=""><h1>TBridge</h1></div>
-    <div class="host"><span id="host-address"></span><button id="logout" hidden>Unpair browser</button></div>
+    <div class="host"><span id="host-address"></span><div class="header-actions"><button id="theme-toggle" type="button">Light mode</button><button id="logout" hidden>Unpair browser</button></div></div>
   </header>
   <p id="status" role="status" aria-live="polite">Connecting…</p>
   <main>
@@ -30,7 +30,10 @@
       </section>
       <section id="empty-panel" hidden><h2>Your terminal, wherever you are.</h2><p>Create or open a session to run commands, Cursor CLI or Codex CLI.</p></section>
       <section id="terminal-panel" hidden>
-        <div class="section-heading"><div class="session-title"><h2 id="target-name"></h2><span id="connection-state">Disconnected</span></div><div class="toolbar"><a class="navigation-link" href="#navigation">Sessions &amp; computers</a><button id="reconnect">Reconnect</button></div></div>
+        <div class="section-heading">
+          <div class="session-title"><h2 id="target-name"></h2><span id="connection-state">Disconnected</span><button id="reconnect">Reconnect</button></div>
+          <div class="toolbar"><a class="navigation-link" href="#navigation">Sessions &amp; computers</a><button id="copy-text" type="button">Copy text</button></div>
+        </div>
         <iframe id="terminal-frame" title="Interactive terminal" allow="clipboard-read; clipboard-write"></iframe>
         <details id="keys-panel" class="auxiliary-panel">
           <summary>Terminal keys</summary>
@@ -69,6 +72,12 @@
         <button id="create-session" class="primary wide">New session</button>
         <ul id="sessions" class="item-list"></ul>
       </section>
+      <section id="devices-panel" hidden>
+        <div class="section-heading"><h2>Devices</h2><button id="refresh-devices" type="button">Refresh</button></div>
+        <p id="devices-status" class="hint" role="status">Loading devices…</p>
+        <ul id="devices" class="item-list"></ul>
+        <p class="hint">Online means activity within 30 seconds. Each paired browser is a separate device.</p>
+      </section>
     </aside>
   </main>
   <dialog id="editor"><form id="editor-form">
@@ -77,5 +86,11 @@
     <label id="editor-value-label"><span id="editor-value-title">Text</span><textarea id="editor-value" rows="5"></textarea></label>
     <div class="toolbar"><button type="submit" class="primary">Save</button><button type="button" id="editor-cancel">Cancel</button></div>
   </form></dialog>
+  <dialog id="copy-dialog" aria-labelledby="copy-title">
+    <h2 id="copy-title">Copy terminal text</h2>
+    <p id="copy-message" class="hint" role="status"></p>
+    <label>Text<textarea id="copy-value" rows="10" readonly spellcheck="false"></textarea></label>
+    <div class="toolbar"><button id="copy-clipboard" class="primary" type="button">Copy to clipboard</button><button id="copy-close" type="button">Close</button></div>
+  </dialog>
 </body>
 </html>
