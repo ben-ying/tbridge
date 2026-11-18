@@ -107,6 +107,10 @@ For LAN use, replace the address with your LAN HTTPS address. Always include `ht
 
 ### Web client
 
+The terminal appears before the computer/session lists on phones. Opening a session returns to the page top; initial terminal focus does not scroll the page down. Use **Sessions & computers** to return to the lists on a phone. Expand **Terminal keys** for Esc, Tab and other helper keys, or **Edit prompt** for long text, Insert/Enter, Clear input and saved shortcuts. Both panels start collapsed. The compact header omits the subtitle, and the session name and connection state share one line.
+
+The browser sends an application heartbeat every five seconds when no reply is pending and waits up to 15 seconds for the matching reply. With a foreground page and normal timer scheduling, silent network loss is usually detected within 15–20 seconds; the page shows Disconnected and disables input. Background tabs may detect it later because browsers throttle timers. After restoring connectivity, use **Reconnect**; uncertain inputs are never replayed automatically.
+
 1. On the client device, open `https://100.99.206.33:8443/` in a browser. External devices also need Tailscale connectivity.
 2. The server generates a self-signed certificate. Compare the browser certificate's SHA-256 fingerprint with the local `pair` output before accepting a certificate exception or trusting it. TLS trust is handled by the browser; JavaScript cannot pin the certificate.
 3. Generate a **new unused** pairing string for this browser. Enter a **Device name**, paste the string into **Connection string**, then click **Pair browser**.

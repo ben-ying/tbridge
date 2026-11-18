@@ -21,6 +21,30 @@ The Go suite covers pairing expiry/reuse, revocation, certificate persistence an
 
 ## Remaining host verification
 
+### Terminal-first layout update (2026-11-18)
+
+The mobile workspace now precedes navigation, and opening a session scrolls its terminal into view. The terminal receives focus when its connection becomes ready; subsequent output does not move focus or scroll the page. The prompt editor, its actions and shortcuts are grouped in a native details panel that starts collapsed. Terminal helper keys remain outside it. Desktop navigation stays on the left; mobile users can follow Sessions & computers to reach the lists.
+
+Executed after this update: `node tests/terminal.test.cjs` (7 passed), `node tests/browser.test.cjs` (6 passed), `node --check server/ui/app.js`, `bash -n scripts/*.sh` and `scripts/build-server.sh` using the installed Go toolchain (server tests passed and all four binaries rebuilt). The existing controller test now checks initial scroll/focus and confirms subsequent output does not steal focus or scroll; terminal tests check focus without replaying input. Headless Chrome could not start because its crash handler socket operation is prohibited. Real desktop/mobile layout and keyboard behavior still require browser verification.
+
+### Compact header and collapsible terminal keys (2026-11-18)
+
+Removed the brand subtitle and reduced the header padding and icon size. Session names and connection states share one line; long names truncate instead of displacing the status. Esc, Tab and the remaining terminal helper keys now live in a separate details panel, collapsed by default. The prompt editor remains independently collapsible.
+
+Validation: all 13 JavaScript tests passed, including helper-key input and draft clearing. HTML inspection confirmed both panels start collapsed and all 15 data-key buttons are inside the key panel. `git diff --check` passed. The build script passed server tests and rebuilt all four server binaries. Real browser layout remains subject to the environment limits described above.
+
+### Page-top navigation and network liveness (2026-11-18)
+
+Opening a session now explicitly returns to the page top. Initial terminal focus uses the xterm textarea's `focus({preventScroll: true})` instead of scrolling to its cursor. The collapsible panels now use English-only labels: Terminal keys and Edit prompt.
+
+Browser WebSocket control pings are invisible to JavaScript, so the browser now sends an application ping with a random ID, and the server replies with the same ID in a pong. A five-second watchdog waits up to 15 seconds for a matching reply, also timing out connections that never become ready. Silent loss is normally detected within 15–20 seconds on a foreground page; background timer throttling can delay it. Timeout, client offline events and synchronous send failures mark the terminal disconnected, close the socket and clear the watchdog. Reconnect, session switching and page exit clear the old timer. Pending terminal input is never replayed.
+
+Executed checks: 7 terminal tests and 9 browser tests passed. New coverage includes silent loss with an OPEN socket, mismatched pongs, unrelated output, healthy idle connections, connection readiness timeout, offline/page-exit timer cleanup, send failures, disabled input after loss and reconnect without replay. Server race tests and Go vet passed; tmux integration was skipped because Unix sockets are prohibited. All four server binaries were rebuilt. Real phone network interruption and visual scroll behavior remain host acceptance checks.
+
+The requested pre-fix Git commit could not be created: `.git` is read-only and `git add` cannot create `index.lock`. The prior UI diff was saved to `/tmp/tbridge-ui-before-connectivity-fix.patch`; no commit was created.
+
+### Host checks
+
 1. Run the Go suite on a real Linux/macOS host and confirm tmux integration passes without a skip. macOS binaries were cross-compiled, not run here.
 2. Replace and restart the server binary, retaining its state directory. Refresh the web page. Pair desktop and mobile browsers using separate codes; compare the certificate fingerprint locally before trusting it.
 3. Create two sessions, send `pwd` using Insert followed by Enter, and check Chinese input, shortcuts, Backspace, Clear (Ctrl+L), Clear input and target isolation. Confirm Clear input only clears the draft.

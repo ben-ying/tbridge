@@ -28,18 +28,22 @@ function browser(authenticated = true) {
   const keyButtons = [...html.matchAll(/data-key="([^"]+)"/g)].map(match => {
     const node = new Element('button'); node.dataset.key = match[1]; return node;
   });
-  const requests = [], sockets = [], terminalCalls = [], storage = new Map();
+  const requests = [], sockets = [], terminalCalls = [], storage = new Map(), scrolls = [], timers = new Map(), listeners = {};
+  let now = 0, timerID = 0;
   const sessions = [{ id: 'tb-' + 'a'.repeat(24), name: 'Codex', attach: 'tmux attach one' }, { id: 'tb-' + 'b'.repeat(24), name: 'Cursor', attach: 'tmux attach two' }];
   let paired = authenticated;
   class WebSocket {
     static OPEN = 1;
-    constructor(url) { this.url = String(url); this.readyState = 1; this.bufferedAmount = 0; this.sent = []; sockets.push(this); }
-    send(text) { this.sent.push(JSON.parse(text)); }
+    constructor(url) { this.url = String(url); this.readyState = 1; this.bufferedAmount = 0; this.sent = []; this.respondToPing = true; sockets.push(this); }
+    send(text) {
+      const message = JSON.parse(text); this.sent.push(message);
+      if (message.type === 'ping' && this.respondToPing) queueMicrotask(() => this.message({ type: 'pong', id: message.id }));
+    }
     close() { this.readyState = 3; queueMicrotask(() => this.onclose?.()); }
     message(value) { this.onmessage?.({ data: JSON.stringify(value) }); }
   }
   const terminal = {};
-  for (const method of ['connection', 'fit', 'output', 'paste', 'key', 'control']) terminal[method] = (...args) => terminalCalls.push([method, ...args]);
+  for (const method of ['connection', 'fit', 'output', 'paste', 'key', 'control', 'focus']) terminal[method] = (...args) => terminalCalls.push([method, ...args]);
   nodes['terminal-frame'].contentWindow = { tbridge: terminal };
   let frameURL = '';
   Object.defineProperty(nodes['terminal-frame'], 'src', {
@@ -49,7 +53,8 @@ function browser(authenticated = true) {
   const context = {
     document: { getElementById: id => nodes[id], createElement: tag => new Element(tag), body: new Element(),
       querySelectorAll: selector => selector === '[data-key]' ? keyButtons : [...keyButtons, nodes.insert, nodes.enter, nodes.control] },
-    window: { addEventListener() {} }, location: new URL('https://server.test:8443'),
+    window: { addEventListener: (name, fn) => { listeners[name] = fn; }, scrollTo: options => scrolls.push(options) }, location: new URL('https://server.test:8443'),
+    Date: { now: () => now }, setInterval: fn => { timers.set(++timerID, fn); return timerID; }, clearInterval: id => timers.delete(id),
     localStorage: { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value) },
     TextEncoder, TextDecoder, Uint8Array, URL, AbortSignal, crypto: webcrypto, WebSocket,
     confirm: () => true,
@@ -62,7 +67,8 @@ function browser(authenticated = true) {
     }
   };
   vm.runInNewContext(fs.readFileSync('server/ui/app.js', 'utf8'), context);
-  return { nodes, requests, sockets, terminalCalls, storage, sessions, context, keyButtons,
+  return { nodes, requests, sockets, terminalCalls, storage, sessions, context, keyButtons, scrolls, timers, listeners,
+    advance: ms => { now += ms; for (const callback of [...timers.values()]) callback(); },
     epoch: () => new URL(nodes['terminal-frame'].src, 'https://server.test:8443').searchParams.get('connection') };
 }
 
@@ -70,7 +76,13 @@ test('web session selection directs input only to the chosen target', async () =
   const b = browser(); await settle();
   find(b.nodes.sessions.children[0], 'Open').click(); await settle();
   assert.match(b.sockets[0].url, new RegExp(b.sessions[0].id));
+  assert.equal(b.scrolls.length, 1); assert.equal(b.scrolls[0].top, 0);
   b.sockets[0].message({ type: 'ready' });
+  assert.equal(b.terminalCalls.filter(call => call[0] === 'focus').length, 1);
+  // Live output must not interrupt a draft by moving focus or scrolling the page.
+  b.sockets[0].message({ type: 'output', data: 'cHJvbXB0' });
+  assert.equal(b.terminalCalls.filter(call => call[0] === 'focus').length, 1);
+  assert.equal(b.scrolls.length, 1);
   const oldEpoch = b.epoch();
   const oldMessage = b.sockets[0].onmessage;
   b.context.window.terminalHost.input('YQ==', oldEpoch);
@@ -94,6 +106,53 @@ test('web disconnect reports uncertain input and never replays it', async () => 
   assert.match(b.nodes.status.textContent, /unknown delivery status/);
   b.nodes.reconnect.click(); await settle(); b.sockets[1].message({ type: 'ready' });
   assert.ok(!b.sockets[1].sent.some(message => message.type === 'input'));
+});
+test('silent server network loss times out despite an OPEN socket and never replays input', async () => {
+  const b = browser(); await settle(); find(b.nodes.sessions.children[0], 'Open').click(); await settle();
+  b.sockets[0].respondToPing = false;
+  b.sockets[0].message({ type: 'ready' });
+  b.context.window.terminalHost.input('YQ==', b.epoch());
+  b.advance(10000);
+  assert.match(b.nodes['connection-state'].textContent, /Connected/);
+  // A mismatched reply or unrelated output must not satisfy the outstanding heartbeat.
+  b.sockets[0].message({ type: 'pong', id: 'wrong' });
+  b.sockets[0].message({ type: 'output', data: 'YQ==' });
+  b.advance(5000); await settle();
+  assert.match(b.nodes['connection-state'].textContent, /Disconnected/);
+  assert.match(b.nodes.status.textContent, /timed out.*unknown delivery status/);
+  assert.equal(b.nodes.insert.disabled, true);
+  assert.equal(b.timers.size, 0);
+  const sent = b.sockets[0].sent.length;
+  b.context.window.terminalHost.input('Yg==', b.epoch());
+  assert.equal(b.sockets[0].sent.length, sent);
+  b.nodes.reconnect.click(); await settle(); b.sockets[1].message({ type: 'ready' }); await settle();
+  assert.ok(!b.sockets[1].sent.some(message => message.type === 'input'));
+  for (let i = 0; i < 5; i++) { b.advance(5000); await settle(); }
+  assert.match(b.nodes['connection-state'].textContent, /Connected/);
+  assert.equal(b.timers.size, 1);
+});
+test('heartbeat timers stop on client offline, connecting timeout and page exit', async () => {
+  const b = browser(); await settle(); find(b.nodes.sessions.children[0], 'Open').click(); await settle();
+  b.advance(15000); await settle();
+  assert.match(b.nodes.status.textContent, /timed out/);
+  assert.equal(b.timers.size, 0);
+  b.nodes.reconnect.click(); await settle(); b.sockets[1].message({ type: 'ready' }); await settle();
+  b.listeners.offline(); await settle();
+  assert.match(b.nodes['connection-state'].textContent, /Disconnected/);
+  assert.match(b.nodes.status.textContent, /offline/);
+  assert.equal(b.timers.size, 0);
+  b.nodes.reconnect.click(); await settle(); b.sockets[2].message({ type: 'ready' }); await settle();
+  b.listeners.pagehide();
+  assert.equal(b.timers.size, 0);
+});
+test('socket send failures clear Connected instead of silently discarding input', async () => {
+  const b = browser(); await settle(); find(b.nodes.sessions.children[0], 'Open').click(); await settle();
+  b.sockets[0].message({ type: 'ready' }); await settle();
+  b.sockets[0].send = () => { throw Error('network failure'); };
+  b.context.window.terminalHost.input('YQ==', b.epoch()); await settle();
+  assert.match(b.nodes['connection-state'].textContent, /Disconnected/);
+  assert.match(b.nodes.status.textContent, /send failed.*unknown delivery status/);
+  assert.equal(b.timers.size, 0);
 });
 test('web shortcuts fill the editor without submitting terminal input', async () => {
   const b = browser(); await settle();

@@ -273,6 +273,15 @@ func (s *service) terminal(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		switch msg.Type {
+		case "ping":
+			// An application-level reply lets browsers detect a silent break in both directions.
+			if msg.ID == "" || len(msg.ID) > 80 {
+				_ = ws.send(terminalMessage{Type: "error", Message: "heartbeat ID required"})
+				return
+			}
+			if ws.send(terminalMessage{Type: "pong", ID: msg.ID}) != nil {
+				return
+			}
 		case "input":
 			if msg.ID == "" || len(msg.ID) > 80 {
 				_ = ws.send(terminalMessage{Type: "error", Message: "input ID required"})

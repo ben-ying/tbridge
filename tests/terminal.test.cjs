@@ -7,8 +7,8 @@ function terminal() {
   let term;
   const sent = [], notices = [], output = [], pasted = [], refreshed = [], sizes = [];
   class Terminal {
-    constructor() { term = this; this.modes = { bracketedPasteMode: false }; this.cols = 80; this.rows = 24; }
-    loadAddon() {} open() {} focus() {} dispose() {}
+    constructor() { term = this; this.modes = { bracketedPasteMode: false }; this.cols = 80; this.rows = 24; this.textarea = { focus: options => { this.focused = true; this.focusOptions = options; } }; }
+    loadAddon() {} open() {} focus() { this.focused = true; } dispose() {}
     onData(callback) { this.data = callback; }
     onBinary(callback) { this.binary = callback; }
     onResize(callback) { this.resize = callback; }
@@ -38,6 +38,9 @@ test('disconnected input is never replayed', () => {
   t.bridge.key(encode('\r'));
   assert.equal(t.sent.length, 0);
   t.bridge.connection(true);
+  t.bridge.focus();
+  assert.equal(t.term.focused, true);
+  assert.equal(t.term.focusOptions.preventScroll, true);
   assert.equal(t.sent.length, 0);
 });
 test('Chinese prompts and Enter are separate input operations', () => {

@@ -12,23 +12,11 @@
 </head>
 <body>
   <header>
-    <div class="brand"><img src="icon.svg" width="44" height="44" alt=""><div><h1>TBridge</h1><p>Remote terminal &amp; AI agents</p></div></div>
+    <div class="brand"><img src="icon.svg" width="32" height="32" alt=""><h1>TBridge</h1></div>
     <div class="host"><span id="host-address"></span><button id="logout" hidden>Unpair browser</button></div>
   </header>
   <p id="status" role="status" aria-live="polite">Connecting…</p>
   <main>
-    <aside>
-      <section>
-        <div class="section-heading"><h2>Computers</h2><button id="add-computer">Add</button></div>
-        <p class="hint">Each computer opens its own secure web page.</p>
-        <ul id="computers" class="item-list"></ul>
-      </section>
-      <section id="session-panel" hidden>
-        <div class="section-heading"><h2>Sessions</h2><button id="refresh">Refresh</button></div>
-        <button id="create-session" class="primary wide">New session</button>
-        <ul id="sessions" class="item-list"></ul>
-      </section>
-    </aside>
     <div class="workspace">
       <section id="pair-panel" hidden>
         <h2>Pair this browser</h2>
@@ -42,28 +30,46 @@
       </section>
       <section id="empty-panel" hidden><h2>Your terminal, wherever you are.</h2><p>Create or open a session to run commands, Cursor CLI or Codex CLI.</p></section>
       <section id="terminal-panel" hidden>
-        <div class="section-heading"><div><h2 id="target-name"></h2><span id="connection-state">Disconnected</span></div><button id="reconnect">Reconnect</button></div>
-        <details><summary>Open this session on the computer</summary><code id="attach-command"></code><p class="hint">Detach with Ctrl+B, then D. Send Ctrl+B twice to pass it to the foreground program.</p></details>
+        <div class="section-heading"><div class="session-title"><h2 id="target-name"></h2><span id="connection-state">Disconnected</span></div><div class="toolbar"><a class="navigation-link" href="#navigation">Sessions &amp; computers</a><button id="reconnect">Reconnect</button></div></div>
         <iframe id="terminal-frame" title="Interactive terminal" allow="clipboard-read; clipboard-write"></iframe>
-        <div id="terminal-keys" class="toolbar" aria-label="Terminal keys">
-          <button data-key="Escape">Esc</button><button data-key="Tab">Tab</button>
-          <button data-key="Backspace">Backspace</button><button data-key="Delete">Delete</button>
-          <button data-key="Home">Home</button><button data-key="End">End</button>
-          <button data-key="PageUp">PgUp</button><button data-key="PageDown">PgDn</button>
-          <button data-key="ArrowUp" aria-label="Up">↑</button><button data-key="ArrowDown" aria-label="Down">↓</button>
-          <button data-key="ArrowLeft" aria-label="Left">←</button><button data-key="ArrowRight" aria-label="Right">→</button>
-          <button data-key="Clear" title="Send Ctrl+L to clear or redraw the foreground program">Clear (Ctrl+L)</button>
-          <button data-key="Interrupt">Ctrl+C</button><button data-key="EOF">Ctrl+D</button><button id="control">Ctrl</button>
-        </div>
-        <label>Command or agent prompt<textarea id="prompt" rows="3" placeholder="Write a command or a multiline agent prompt…" spellcheck="false"></textarea></label>
-        <div class="toolbar">
-          <button id="insert" class="primary">Insert into terminal</button><button id="enter">Enter</button>
-          <button id="clear-prompt">Clear input</button><button id="save-shortcut">Save shortcut</button>
-        </div>
-        <p class="hint">Insert and Enter are separate. Multiline input requires bracketed paste support from the foreground program.</p>
-        <div class="section-heading"><h3>Shortcuts</h3></div><ul id="shortcuts" class="shortcut-list"></ul>
+        <details id="keys-panel" class="auxiliary-panel">
+          <summary>Terminal keys</summary>
+          <div id="terminal-keys" class="toolbar" aria-label="Terminal keys">
+            <button data-key="Escape">Esc</button><button data-key="Tab">Tab</button>
+            <button data-key="Backspace">Backspace</button><button data-key="Delete">Delete</button>
+            <button data-key="Home">Home</button><button data-key="End">End</button>
+            <button data-key="PageUp">PgUp</button><button data-key="PageDown">PgDn</button>
+            <button data-key="ArrowUp" aria-label="Up">↑</button><button data-key="ArrowDown" aria-label="Down">↓</button>
+            <button data-key="ArrowLeft" aria-label="Left">←</button><button data-key="ArrowRight" aria-label="Right">→</button>
+            <button data-key="Clear" title="Send Ctrl+L to clear or redraw the foreground program">Clear (Ctrl+L)</button>
+            <button data-key="Interrupt">Ctrl+C</button><button data-key="EOF">Ctrl+D</button><button id="control">Ctrl</button>
+          </div>
+        </details>
+        <details id="prompt-panel" class="prompt-panel">
+          <summary>Edit prompt</summary>
+          <label>Command or agent prompt<textarea id="prompt" rows="3" placeholder="Write a command or a multiline agent prompt…" spellcheck="false"></textarea></label>
+          <div class="toolbar">
+            <button id="insert" class="primary">Insert into terminal</button><button id="enter">Enter</button>
+            <button id="clear-prompt">Clear input</button><button id="save-shortcut">Save shortcut</button>
+          </div>
+          <p class="hint">Insert and Enter are separate. Multiline input requires bracketed paste support from the foreground program.</p>
+          <div class="section-heading"><h3>Shortcuts</h3></div><ul id="shortcuts" class="shortcut-list"></ul>
+        </details>
+        <details><summary>Open this session on the computer</summary><code id="attach-command"></code><p class="hint">Detach with Ctrl+B, then D. Send Ctrl+B twice to pass it to the foreground program.</p></details>
       </section>
     </div>
+    <aside id="navigation" tabindex="-1" aria-label="Sessions and computers">
+      <section>
+        <div class="section-heading"><h2>Computers</h2><button id="add-computer">Add</button></div>
+        <p class="hint">Each computer opens its own secure web page.</p>
+        <ul id="computers" class="item-list"></ul>
+      </section>
+      <section id="session-panel" hidden>
+        <div class="section-heading"><h2>Sessions</h2><button id="refresh">Refresh</button></div>
+        <button id="create-session" class="primary wide">New session</button>
+        <ul id="sessions" class="item-list"></ul>
+      </section>
+    </aside>
   </main>
   <dialog id="editor"><form id="editor-form">
     <h2 id="editor-title"></h2>

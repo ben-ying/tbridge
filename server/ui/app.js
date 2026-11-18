@@ -7,6 +7,8 @@
   let generation = 0, busy = false, pending = new Set(), editorAction = null;
   let authenticated = false;
   let failureShown = false;
+  let heartbeatTimer = null, heartbeat = null;
+  const heartbeatInterval = 5000, heartbeatTimeout = 15000;
   let preferences = { computers: [], shortcuts: [] };
   let storageWarning = '';
   try {
@@ -164,6 +166,7 @@
   }); });
 
   function stopTerminal() {
+    clearInterval(heartbeatTimer); heartbeatTimer = null; heartbeat = null;
     generation++; connected = false;
     const hadPending = pending.size > 0;
     if (socket) { socket.onclose = socket.onerror = socket.onmessage = null; socket.close(); socket = null; }
@@ -177,20 +180,25 @@
     $('target-name').textContent = session.name;
     $('attach-command').textContent = session.attach || 'Refresh the session list to see its attach command.';
     state(); renderSessions();
+    // Keep the page header visible instead of scrolling down to the terminal panel.
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     notify(`Connecting to ${location.host} / ${session.name}…${unknown ? ' Previous input has unknown delivery status; it will not be resent.' : ''}`);
     frame.src = '/terminal-frame.html?connection=' + generation;
   }
   function lost(reason) {
     if (failureShown) return;
     failureShown = true;
+    clearInterval(heartbeatTimer); heartbeatTimer = null; heartbeat = null;
     connected = false; terminal()?.connection(false);
     const unknown = pending.size > 0; pending.clear(); state();
+    socket?.close();
     notify(reason + (unknown ? ' Some input has unknown delivery status; it will not be resent.' : ''));
   }
   function send(message) {
-    if (!connected || socket?.readyState !== WebSocket.OPEN) { notify('Disconnected: input was not sent.'); return; }
+    if (!connected || socket?.readyState !== WebSocket.OPEN) { lost('Terminal disconnected. Reconnect; input was not sent.'); return; }
     if (socket.bufferedAmount > 1024 * 1024 || pending.size >= 1024) { socket.close(); lost('Input queue full. Reconnect.'); return; }
-    socket.send(JSON.stringify(message));
+    try { socket.send(JSON.stringify(message)); }
+    catch (error) { lost('Terminal send failed. Check the network and reconnect.'); }
   }
   window.terminalHost = {
     input(data, epoch) {
@@ -211,6 +219,21 @@
       const current = generation;
       const url = new URL(`/api/v1/sessions/${encodeURIComponent(selected.id)}/terminal`, location.origin); url.protocol = 'wss:';
       socket = new WebSocket(url);
+      const started = Date.now();
+      // Browser JavaScript cannot observe WebSocket control pings. Probe the same application
+      // channel as terminal input, so a silent network failure cannot leave Connected indefinitely.
+      const checkConnection = () => {
+        if (current !== generation || failureShown) return;
+        const now = Date.now();
+        if ((!connected && now - started >= heartbeatTimeout) || (heartbeat && now - heartbeat.sentAt >= heartbeatTimeout)) {
+          lost('Server connection timed out. Check the network and reconnect.'); return;
+        }
+        if (connected && !heartbeat) {
+          heartbeat = { id: crypto.randomUUID(), sentAt: now };
+          send({ type: 'ping', id: heartbeat.id });
+        }
+      };
+      heartbeatTimer = setInterval(checkConnection, heartbeatInterval);
       socket.onmessage = event => {
         if (current !== generation || failureShown) return;
         try {
@@ -219,7 +242,12 @@
           if (message.type === 'output') terminal()?.output(message.data);
           else if (message.type === 'ready') {
             connected = true; terminal()?.connection(true); terminal()?.fit(); state();
+            // Focus once at connection readiness; output must never steal focus from prompt editing.
+            terminal()?.focus();
             notify(`Connected: ${location.host} / ${selected.name}`);
+            checkConnection();
+          } else if (message.type === 'pong') {
+            if (heartbeat?.id === message.id) heartbeat = null;
           } else if (message.type === 'ack') pending.delete(message.id);
           else if (message.type === 'error') { socket.close(); lost(message.message || 'Terminal error.'); }
         } catch (error) { socket.close(); lost('Invalid terminal message. Reconnect.'); }
@@ -257,6 +285,7 @@
     preferences.shortcuts.push({ id: crypto.randomUUID(), name, text }); savePreferences(); renderShortcuts();
   }));
   window.addEventListener('pagehide', stopTerminal);
+  window.addEventListener('offline', () => { if (socket && !failureShown) lost('Client network offline. Reconnect after the network returns.'); });
   $('host-address').textContent = location.origin;
   renderComputers(); renderShortcuts(); state();
   void run(async () => {

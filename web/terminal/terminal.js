@@ -35,6 +35,8 @@
   observer.observe(document.getElementById('terminal'));
   window.tbridge = {
     output: data => term.write(decode(data)),
+    // Initial keyboard focus must not scroll the parent page down to the terminal cursor.
+    focus: () => term.textarea?.focus({ preventScroll: true }),
     connection: value => { connected = value; if (!value) ctrl = false; },
     key: data => {
       let text = decoder.decode(decode(data));
