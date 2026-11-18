@@ -1,0 +1,15 @@
+[Unit]
+Description=TBridge terminal service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/tbridge serve --listen 0.0.0.0:8443
+Restart=on-failure
+RestartSec=3
+KillMode=process
+UMask=0077
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=default.target

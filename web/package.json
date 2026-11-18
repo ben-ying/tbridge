@@ -1,0 +1,10 @@
+{
+  "name": "tbridge-terminal-assets",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Locally bundled terminal renderer; no CDN or runtime network dependencies",
+  "dependencies": {
+    "@xterm/xterm": "5.5.0",
+    "@xterm/addon-fit": "0.10.0"
+  }
+}
