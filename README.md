@@ -243,6 +243,78 @@ launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/dev.tbridge.agent.p
 
 Load it again with `bootstrap` after the change. For rollback, stop the service and replace the binary. Existing tmux tasks normally survive a TBridge service restart; a computer restart ends them. Preserve the state directory to retain client credentials.
 
+### macOS: LaunchDaemon (start before login)
+
+Use a LaunchDaemon to start at system boot without logging in. It runs as your normal user through `UserName`. Choose either this method or the LaunchAgent above; stop the LaunchAgent with its `bootout` command before switching to avoid a port conflict.
+
+From the project root, run these commands as the user who will run TBridge. Reuse the template and set absolute paths because launchd does not expand `$HOME` inside a plist:
+
+~~~sh
+cp deploy/dev.tbridge.agent.plist "$HOME/dev.tbridge.daemon.plist"
+plutil -replace Label -string dev.tbridge.daemon "$HOME/dev.tbridge.daemon.plist"
+plutil -replace ProgramArguments.0 -string "$HOME/.local/bin/tbridge" "$HOME/dev.tbridge.daemon.plist"
+plutil -insert UserName -string "$(id -un)" "$HOME/dev.tbridge.daemon.plist"
+plutil -insert EnvironmentVariables.HOME -string "$HOME" "$HOME/dev.tbridge.daemon.plist"
+plutil -insert WorkingDirectory -string "$HOME" "$HOME/dev.tbridge.daemon.plist"
+~~~
+
+Review the generated file's PATH for tmux and your AI CLI, and adjust `--listen` or add a custom `--state` if needed. Validate it, then install it as a root-owned system configuration and load it immediately:
+
+~~~sh
+plutil -lint "$HOME/dev.tbridge.daemon.plist"
+sudo install -o root -g wheel -m 644 "$HOME/dev.tbridge.daemon.plist" /Library/LaunchDaemons/dev.tbridge.daemon.plist
+sudo launchctl enable system/dev.tbridge.daemon
+sudo launchctl bootstrap system /Library/LaunchDaemons/dev.tbridge.daemon.plist
+sudo launchctl print system/dev.tbridge.daemon
+~~~
+
+The service starts at subsequent boots; the template's KeepAlive restarts it on exit. With FileVault enabled, the startup disk must be unlocked before macOS can start the daemon. To restart it manually:
+
+~~~sh
+sudo launchctl kickstart -k system/dev.tbridge.daemon
+~~~
+
+To stop it and disable startup:
+
+~~~sh
+sudo launchctl bootout system /Library/LaunchDaemons/dev.tbridge.daemon.plist
+sudo launchctl disable system/dev.tbridge.daemon
+~~~
+
+After editing the generated file or upgrading, unload the running daemon before installing/loading it again. Reuse the `install`, `enable`, and `bootstrap` commands above.
+
+#### Startup failure: tmux is installed but the service cannot find it
+
+If the error log says `tmux is required; install tmux before starting TBridge`, the service may be missing Homebrew's directory in PATH. A LaunchDaemon does not load `.zshrc` or `.bashrc`: finding tmux in your terminal does not mean the service can find it. Typical symptoms are `state = spawn scheduled`, `last exit code = 1`, repeated `Successfully spawned` / `service inactive` messages, and no listener on port 8443.
+
+Check in your normal terminal:
+
+~~~sh
+command -v tmux
+~~~
+
+If nothing is returned, install it with `brew install tmux`. If it returns `/opt/homebrew/bin/tmux` (Apple Silicon) or `/usr/local/bin/tmux` (Intel Homebrew), explicitly add that directory to the service PATH. The project template already includes both directories; older or manually written configurations may omit them.
+
+The commands below use this section's `dev.tbridge.daemon` label and plist filename. **If you used the earlier `local.tbridge` example, replace every `dev.tbridge.daemon` below with `local.tbridge`.** For a custom tmux location, also add its directory to PATH:
+
+~~~sh
+sudo plutil -replace EnvironmentVariables.PATH \
+  -string "$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+  /Library/LaunchDaemons/dev.tbridge.daemon.plist
+sudo plutil -lint /Library/LaunchDaemons/dev.tbridge.daemon.plist
+~~~
+
+After validation reports `OK`, unload and reload the configuration; `kickstart` alone does not reload plist changes:
+
+~~~sh
+sudo launchctl bootout system /Library/LaunchDaemons/dev.tbridge.daemon.plist
+sudo launchctl bootstrap system /Library/LaunchDaemons/dev.tbridge.daemon.plist
+sudo launchctl print system/dev.tbridge.daemon
+sudo lsof -nP -iTCP:8443 -sTCP:LISTEN
+~~~
+
+Expect `state = running` and a TBridge listener on port 8443. Keep the same PATH in your source plist so a later reinstall preserves the fix. If startup still fails, read the file specified by `StandardErrorPath`; for the earlier `local.tbridge` example, this is `$HOME/Library/Logs/tbridge.error.log`.
+
 ## Troubleshooting
 
 | Symptom | What to check |

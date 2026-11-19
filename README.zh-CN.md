@@ -243,6 +243,78 @@ launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/dev.tbridge.agent.p
 
 修改后重新用 `bootstrap` 加载。回滚时停止服务并替换二进制。现有 tmux 任务通常可以保留到 TBridge 服务重启后，但电脑重启会结束任务；保留状态目录可保留客户端凭证。
 
+### macOS：LaunchDaemon（登录前启动）
+
+需要开机后无需登录就运行时，使用 LaunchDaemon。通过 `UserName` 指定普通用户运行服务。此方法与上面的 LaunchAgent 二选一；切换前先用上面的 `bootout` 命令停止 LaunchAgent，避免端口冲突。
+
+在项目根目录，以实际运行 TBridge 的用户执行以下命令。复用现有模板并写入绝对路径，因为 launchd 不会展开 plist 内的 `$HOME`：
+
+~~~sh
+cp deploy/dev.tbridge.agent.plist "$HOME/dev.tbridge.daemon.plist"
+plutil -replace Label -string dev.tbridge.daemon "$HOME/dev.tbridge.daemon.plist"
+plutil -replace ProgramArguments.0 -string "$HOME/.local/bin/tbridge" "$HOME/dev.tbridge.daemon.plist"
+plutil -insert UserName -string "$(id -un)" "$HOME/dev.tbridge.daemon.plist"
+plutil -insert EnvironmentVariables.HOME -string "$HOME" "$HOME/dev.tbridge.daemon.plist"
+plutil -insert WorkingDirectory -string "$HOME" "$HOME/dev.tbridge.daemon.plist"
+~~~
+
+检查生成文件中的 PATH，确保包含 tmux 和 AI CLI，并按需修改 `--listen` 或添加自定义 `--state`。校验后，将配置以 root 所有权安装到系统目录并立即加载：
+
+~~~sh
+plutil -lint "$HOME/dev.tbridge.daemon.plist"
+sudo install -o root -g wheel -m 644 "$HOME/dev.tbridge.daemon.plist" /Library/LaunchDaemons/dev.tbridge.daemon.plist
+sudo launchctl enable system/dev.tbridge.daemon
+sudo launchctl bootstrap system /Library/LaunchDaemons/dev.tbridge.daemon.plist
+sudo launchctl print system/dev.tbridge.daemon
+~~~
+
+此后每次开机都会启动，模板中的 KeepAlive 会在进程退出后重启它。如果启用了 FileVault，需要先解锁启动磁盘，macOS 才能启动此服务。手动重启：
+
+~~~sh
+sudo launchctl kickstart -k system/dev.tbridge.daemon
+~~~
+
+停止并取消开机启动：
+
+~~~sh
+sudo launchctl bootout system /Library/LaunchDaemons/dev.tbridge.daemon.plist
+sudo launchctl disable system/dev.tbridge.daemon
+~~~
+
+修改生成的配置或升级后，先卸载正在运行的服务，再使用上面的 `install`、`enable` 和 `bootstrap` 命令重新安装、启用并加载。
+
+#### 启动失败：tmux 已安装，但服务找不到
+
+如果错误日志提示 `tmux is required; install tmux before starting TBridge`，可能是服务的 PATH 缺少 Homebrew 目录。LaunchDaemon 不会加载 `.zshrc` 或 `.bashrc`，终端能找到 tmux 不代表服务也能找到。典型现象是 `state = spawn scheduled`、`last exit code = 1`、反复出现 `Successfully spawned` / `service inactive`，且 8443 端口没有监听。
+
+先在普通终端检查：
+
+~~~sh
+command -v tmux
+~~~
+
+没有输出时先执行 `brew install tmux`。如果输出 `/opt/homebrew/bin/tmux`（Apple Silicon）或 `/usr/local/bin/tmux`（Intel Homebrew），需要把对应目录明确加入服务 PATH。项目模板已包含这两个目录，但旧配置或手写配置可能遗漏。
+
+下面使用本节的 `dev.tbridge.daemon` 标签和 plist 文件名。**如果使用了早先的 `local.tbridge` 示例，请将下面所有 `dev.tbridge.daemon` 替换为 `local.tbridge`。** 如果 tmux 安装在其他位置，也要将其所在目录加入 PATH：
+
+~~~sh
+sudo plutil -replace EnvironmentVariables.PATH \
+  -string "$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+  /Library/LaunchDaemons/dev.tbridge.daemon.plist
+sudo plutil -lint /Library/LaunchDaemons/dev.tbridge.daemon.plist
+~~~
+
+校验显示 `OK` 后，卸载并重新加载配置；只执行 `kickstart` 不会重新读取修改后的 plist：
+
+~~~sh
+sudo launchctl bootout system /Library/LaunchDaemons/dev.tbridge.daemon.plist
+sudo launchctl bootstrap system /Library/LaunchDaemons/dev.tbridge.daemon.plist
+sudo launchctl print system/dev.tbridge.daemon
+sudo lsof -nP -iTCP:8443 -sTCP:LISTEN
+~~~
+
+正常应显示 `state = running`，并有 TBridge 监听 8443。请同步更新源 plist 中的 PATH，避免后续重新安装时覆盖修复。如果仍启动失败，查看 `StandardErrorPath` 指定的文件；早先的 `local.tbridge` 示例使用 `$HOME/Library/Logs/tbridge.error.log`。
+
 ## 故障排查
 
 | 现象 | 检查方法 |
